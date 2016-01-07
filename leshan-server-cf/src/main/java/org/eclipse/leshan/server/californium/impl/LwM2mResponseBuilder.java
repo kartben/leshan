@@ -303,7 +303,7 @@ public class LwM2mResponseBuilder<T extends LwM2mResponse> implements DownlinkRe
             lwM2mresponse = BootstrapDeleteResponse.success();
             break;
         case METHOD_NOT_ALLOWED:
-            lwM2mresponse = BootstrapDeleteResponse.methodNotAllowed();
+            lwM2mresponse = BootstrapDeleteResponse.methodNotAllowed(null);
             break;
         default:
             handleUnexpectedResponseCode(client.getEndpoint(), coapRequest, coapResponse);
