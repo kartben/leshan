@@ -15,6 +15,9 @@
  *******************************************************************************/
 package org.eclipse.leshan.client.servers;
 
+import static org.eclipse.leshan.client.util.LwM2mId.SECURITY_ID;
+import static org.eclipse.leshan.client.util.LwM2mId.SERVER_ID;
+
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -57,17 +60,28 @@ public class BootstrapHandler {
 
     public synchronized BootstrapDeleteResponse delete(Identity identity, BootstrapDeleteRequest deleteRequest) {
         if (bootstrapping()) {
-            // only if the request is from the bootstrap server
+            // Only if the request is from the bootstrap server
             if (!isBootstrapServer(identity)) {
                 return BootstrapDeleteResponse.methodNotAllowed("not from a bootstrap server");
             }
 
-            // TODO do not delete boostrap server (see 5.2.5.2 Bootstrap Delete)
-            for (LwM2mObjectEnabler enabler : objects.values()) {
-                for (Integer instanceId : enabler.getAvailableInstanceIds()) {
-                    enabler.delete(identity, new DeleteRequest(enabler.getId(), instanceId));
-                }
+            // TODO the spec say that delete on "/" should delete all the existing Object Instances - except LWM2M
+            // Bootstrap Server Account, (see 5.2.5.2 Bootstrap Delete)
+            // For now we only remove security and server object.
+
+            // Delete all device management server
+            LwM2mObjectEnabler serverObject = objects.get(SERVER_ID);
+            for (Integer instanceId : serverObject.getAvailableInstanceIds()) {
+                serverObject.delete(identity, new DeleteRequest(SERVER_ID, instanceId));
             }
+
+            // Delete all security instance (except bootstrap one)
+            // TODO do not delete boostrap server (see 5.2.5.2 Bootstrap Delete)
+            LwM2mObjectEnabler securityObject = objects.get(SECURITY_ID);
+            for (Integer instanceId : serverObject.getAvailableInstanceIds()) {
+                securityObject.delete(identity, new DeleteRequest(SERVER_ID, instanceId));
+            }
+
             return BootstrapDeleteResponse.success();
         } else {
             return BootstrapDeleteResponse.methodNotAllowed("no pending bootstrap session");
