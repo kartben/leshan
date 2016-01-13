@@ -39,6 +39,9 @@ import org.slf4j.LoggerFactory;
 public class RegistrationEngine {
 
     private static final Logger LOG = LoggerFactory.getLogger(RegistrationEngine.class);
+    private static final int BS_TIMEOUT = 10; // in seconds
+    // TODO should be configurable and incremental
+    private static final int BS_RETRY = 10 * 60; // in seconds
 
     private String endpoint;
     private LwM2mClientRequestSender sender;
@@ -47,8 +50,8 @@ public class RegistrationEngine {
 
     // registration update
     private String registrationID;
-    private ScheduledFuture<?> regUpdateFuture;
-    private final ScheduledExecutorService schedExecutor = Executors.newScheduledThreadPool(1);
+    private ScheduledFuture<?> updateFuture;
+    private final ScheduledExecutorService schedExecutor = Executors.newScheduledThreadPool(2);
 
     public RegistrationEngine(String endpoint, Map<Integer, LwM2mObjectEnabler> objectEnablers,
             LwM2mClientRequestSender requestSender, BootstrapHandler bootstrapState) {
@@ -60,60 +63,50 @@ public class RegistrationEngine {
     }
 
     public void start() {
-        schedExecutor.submit(new Runnable() {
-            @Override
-            public void run() {
-                ServersInfo serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
-                if (!serversInfo.deviceMangements.isEmpty()) {
-                    boolean success = register();
-                    if (!success) {
-                        bootstrap();
-                    }
-                } else {
-                    bootstrap();
-                }
-            }
-        });
+        schedExecutor.submit(new BootstrapTask());
     }
 
-    private void bootstrap() {
+    private boolean bootstrap() {
         ServersInfo serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
 
         if (serversInfo.bootstrap == null) {
             LOG.error("Missing info to boostrap the client");
-            return;
+            return false;
         }
 
         if (bootstrapHandler.tryToInitSession(serversInfo.bootstrap)) {
             LOG.info("Starting bootstrap session ");
-
             // Send bootstrap request
             ServerInfo boostrapServer = serversInfo.bootstrap;
             BootstrapResponse response = sender.send(boostrapServer.getAddress(), boostrapServer.isSecure(),
                     new BootstrapRequest(endpoint), null);
             if (response == null) {
                 LOG.error("Bootstrap failed: timeout");
+                return false;
             } else if (response.getCode() == ResponseCode.CHANGED) {
                 LOG.info("Bootstrap started");
                 // wait until it is finished (or too late)
-                boolean timeout = !bootstrapHandler.waitBoostrapFinished(10);
+                boolean timeout = !bootstrapHandler.waitBoostrapFinished(BS_TIMEOUT);
                 if (timeout) {
                     LOG.error("Bootstrap sequence timeout");
                     bootstrapHandler.cancelSession();
+                    return false;
                 } else {
                     serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
                     LOG.info("Bootstrap finished {}", serversInfo);
-                    register();
+                    return true;
                 }
             } else {
                 LOG.error("Bootstrap failed: {}", response.getCode());
+                return false;
             }
         } else {
             LOG.info("Bootstrap sequence already started");
+            return false;
         }
     }
 
-    public boolean register() {
+    private boolean register() {
         ServersInfo serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
         DmServerInfo dmInfo = serversInfo.deviceMangements.values().iterator().next();
 
@@ -135,7 +128,7 @@ public class RegistrationEngine {
             registrationID = response.getRegistrationID();
 
             // update every lifetime period
-            regUpdateFuture = schedExecutor.schedule(new UpdateRegistration(), dmInfo.lifetime - 1, TimeUnit.SECONDS);
+            scheduleUpdate(dmInfo);
 
             LOG.info("Registered with location '{}'", response.getRegistrationID());
         } else {
@@ -146,7 +139,7 @@ public class RegistrationEngine {
         return registrationID != null;
     }
 
-    public boolean deregister() {
+    private boolean deregister() {
         if (registrationID == null)
             return true;
 
@@ -175,51 +168,84 @@ public class RegistrationEngine {
         }
     }
 
-    public void update() {
+    private boolean update() {
         cancelUpdateTask();
 
         ServersInfo serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
         DmServerInfo dmInfo = serversInfo.deviceMangements.values().iterator().next();
         if (dmInfo == null) {
             LOG.error("Missing info to update registration to a DM server");
-            return;
+            return false;
         }
 
         // Send update
         final UpdateResponse response = sender.send(dmInfo.getAddress(), dmInfo.isSecure(), new UpdateRequest(
                 registrationID, null, null, null, null), null);
         if (response == null) {
-            // we can contact device management so we must start a new bootstrap session
             registrationID = null;
             LOG.info("Registration update failed: timeout");
-            bootstrap();
+            return false;
         } else if (response.getCode() == ResponseCode.CHANGED) {
             // Update successful, so we reschedule new update
-            regUpdateFuture = schedExecutor.schedule(new UpdateRegistration(), dmInfo.lifetime - 1, TimeUnit.SECONDS);
+            scheduleUpdate(dmInfo);
             LOG.info("Registration update: {}", response.getCode());
+            return true;
         } else {
-            // Update failed but server is here so start a new registration
             LOG.info("Registration update failed: {}", response);
-            if (!register())
-                bootstrap();
+            return false;
         }
 
+    }
+
+    private class BootstrapTask implements Runnable {
+        @Override
+        public void run() {
+            ServersInfo serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
+            if (!serversInfo.deviceMangements.isEmpty()) {
+                if (!register()) {
+                    if (!bootstrap() || !register())
+                        schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+                }
+            } else {
+                if (!bootstrap() || !register())
+                    schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+            }
+        }
+    }
+
+    private void scheduleUpdate(DmServerInfo dmInfo) {
+        // calculate next update : lifetime - 10%
+        // dmInfo.lifetime is in seconds
+        long nextUpdate = dmInfo.lifetime * 900l;
+        updateFuture = schedExecutor.schedule(new UpdateRegistrationTask(), nextUpdate, TimeUnit.MILLISECONDS);
+    }
+
+    private class UpdateRegistrationTask implements Runnable {
+        @Override
+        public void run() {
+            if (!update()) {
+                if (!register()) {
+                    if (!bootstrap() || !register()) {
+                        schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+                    }
+                }
+            }
+        }
     }
 
     private void cancelUpdateTask() {
-        if (regUpdateFuture != null) {
-            regUpdateFuture.cancel(false);
-        }
-    }
-
-    private class UpdateRegistration implements Runnable {
-        @Override
-        public void run() {
-            update();
+        if (updateFuture != null) {
+            updateFuture.cancel(false);
         }
     }
 
     public void stop() {
+        // TODO we should manage the case where we stop in the middle of a bootstrap session ...
+        schedExecutor.shutdownNow();
+        try {
+            schedExecutor.awaitTermination(BS_RETRY, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+        }
         deregister();
     }
 }
