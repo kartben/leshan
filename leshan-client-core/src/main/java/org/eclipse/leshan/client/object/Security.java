@@ -15,6 +15,14 @@
  *******************************************************************************/
 package org.eclipse.leshan.client.object;
 
+import static org.eclipse.leshan.client.util.LwM2mId.SEC_BOOTSTRAP;
+import static org.eclipse.leshan.client.util.LwM2mId.SEC_PUBKEY_IDENTITY;
+import static org.eclipse.leshan.client.util.LwM2mId.SEC_SECRET_KEY;
+import static org.eclipse.leshan.client.util.LwM2mId.SEC_SECURITY_MODE;
+import static org.eclipse.leshan.client.util.LwM2mId.SEC_SERVER_ID;
+import static org.eclipse.leshan.client.util.LwM2mId.SEC_SERVER_PUBKEY;
+import static org.eclipse.leshan.client.util.LwM2mId.SEC_SERVER_URI;
+
 import org.eclipse.leshan.client.resource.BaseInstanceEnabler;
 import org.eclipse.leshan.client.resource.LwM2mInstanceEnabler;
 import org.eclipse.leshan.core.model.ResourceModel.Type;
@@ -61,6 +69,13 @@ public class Security extends BaseInstanceEnabler {
     }
 
     /**
+     * Returns a new security instance (PSK) for a boostrap server.
+     */
+    public static Security pskBootstrap(String serverUri, int shortServerId, byte[] pskIdentity, byte[] privateKey) {
+        return new Security(serverUri, true, 0, pskIdentity.clone(), new byte[0], privateKey.clone(), shortServerId);
+    }
+
+    /**
      * Returns a new security instance (NoSec) for a device management server.
      */
     public static Security noSec(String serverUri, int shortServerId) {
@@ -91,28 +106,46 @@ public class Security extends BaseInstanceEnabler {
 
         switch (resourceId) {
 
-        case 0: // server uri
+        case SEC_SERVER_URI: // server uri
             if (value.getType() != Type.STRING) {
                 return WriteResponse.badRequest("invalid type");
             }
             serverUri = (String) value.getValue();
             return WriteResponse.success();
 
-        case 1: // is bootstrap server
+        case SEC_BOOTSTRAP: // is bootstrap server
             if (value.getType() != Type.BOOLEAN) {
                 return WriteResponse.badRequest("invalid type");
             }
             bootstrapServer = (Boolean) value.getValue();
             return WriteResponse.success();
 
-        case 2: // security mode
+        case SEC_SECURITY_MODE: // security mode
             if (value.getType() != Type.INTEGER) {
                 return WriteResponse.badRequest("invalid type");
             }
             securityMode = ((Long) value.getValue()).intValue();
             return WriteResponse.success();
 
-        case 10: // short server id
+        case SEC_PUBKEY_IDENTITY: // Public Key or Identity
+            if (value.getType() != Type.OPAQUE) {
+                return WriteResponse.badRequest("invalid type");
+            }
+            publicKeyOrIdentity = (byte[]) value.getValue();
+            return WriteResponse.success();
+        case SEC_SERVER_PUBKEY: // server public key
+            if (value.getType() != Type.OPAQUE) {
+                return WriteResponse.badRequest("invalid type");
+            }
+            secretKey = (byte[]) value.getValue();
+            return WriteResponse.success();
+        case SEC_SECRET_KEY: // Secret Key
+            if (value.getType() != Type.OPAQUE) {
+                return WriteResponse.badRequest("invalid type");
+            }
+            secretKey = (byte[]) value.getValue();
+            return WriteResponse.success();
+        case SEC_SERVER_ID: // short server id
             if (value.getType() != Type.INTEGER) {
                 return WriteResponse.badRequest("invalid type");
             }
@@ -130,25 +163,25 @@ public class Security extends BaseInstanceEnabler {
         // only accessible for internal read?
 
         switch (resourceid) {
-        case 0: // server uri
+        case SEC_SERVER_URI: // server uri
             return ReadResponse.success(resourceid, serverUri);
 
-        case 1: // is bootstrap server?
+        case SEC_BOOTSTRAP: // is bootstrap server?
             return ReadResponse.success(resourceid, bootstrapServer);
 
-        case 2: // security mode
+        case SEC_SECURITY_MODE: // security mode
             return ReadResponse.success(resourceid, securityMode);
 
-        case 3: // public key or identity
+        case SEC_PUBKEY_IDENTITY: // public key or identity
             return ReadResponse.success(resourceid, publicKeyOrIdentity);
 
-        case 4: // server public key
+        case SEC_SERVER_PUBKEY: // server public key
             return ReadResponse.success(resourceid, serverPublicKey);
 
-        case 5: // secret key
+        case SEC_SECRET_KEY: // secret key
             return ReadResponse.success(resourceid, secretKey);
 
-        case 10: // short server id
+        case SEC_SERVER_ID: // short server id
             return ReadResponse.success(resourceid, shortServerId);
 
         default:
