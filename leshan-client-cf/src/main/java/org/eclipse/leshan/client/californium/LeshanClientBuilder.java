@@ -45,7 +45,11 @@ public class LeshanClientBuilder {
      * Sets the local end-point address
      */
     public LeshanClientBuilder setLocalAddress(String hostname, int port) {
-        this.localAddress = new InetSocketAddress(hostname, port);
+        if (hostname == null) {
+            this.localAddress = new InetSocketAddress(port);
+        } else {
+            this.localAddress = new InetSocketAddress(hostname, port);
+        }
         return this;
     }
 
@@ -53,7 +57,11 @@ public class LeshanClientBuilder {
      * Sets the local secure end-point address
      */
     public LeshanClientBuilder setLocalSecureAddress(String hostname, int port) {
-        this.localSecureAddress = new InetSocketAddress(hostname, port);
+        if (hostname == null) {
+            this.localSecureAddress = new InetSocketAddress(port);
+        } else {
+            this.localSecureAddress = new InetSocketAddress(hostname, port);
+        }
         return this;
     }
 
