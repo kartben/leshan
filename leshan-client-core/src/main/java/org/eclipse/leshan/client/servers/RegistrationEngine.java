@@ -203,12 +203,22 @@ public class RegistrationEngine {
             ServersInfo serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
             if (!serversInfo.deviceMangements.isEmpty()) {
                 if (!register()) {
-                    if (!bootstrap() || !register())
+                    if (!bootstrap()) {
                         schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+                    } else {
+                        if (!register()) {
+                            schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+                        }
+                    }
                 }
             } else {
-                if (!bootstrap() || !register())
+                if (!bootstrap()) {
                     schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+                } else {
+                    if (!register()) {
+                        schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+                    }
+                }
             }
         }
     }
@@ -225,8 +235,12 @@ public class RegistrationEngine {
         public void run() {
             if (!update()) {
                 if (!register()) {
-                    if (!bootstrap() || !register()) {
+                    if (!bootstrap()) {
                         schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+                    } else {
+                        if (!register()) {
+                            schedExecutor.schedule(new BootstrapTask(), BS_RETRY, TimeUnit.SECONDS);
+                        }
                     }
                 }
             }
