@@ -17,9 +17,9 @@ package org.eclipse.leshan.client.californium;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.californium.core.CoapServer;
 import org.eclipse.californium.core.network.CoapEndpoint;
@@ -66,7 +66,7 @@ public class LeshanClient implements LwM2mClient {
         Validate.notEmpty(objectEnablers);
 
         // Create Object enablers
-        this.objectEnablers = new HashMap<>();
+        this.objectEnablers = new ConcurrentHashMap<>();
         for (LwM2mObjectEnabler enabler : objectEnablers) {
             if (this.objectEnablers.containsKey(enabler.getId())) {
                 throw new IllegalArgumentException(String.format(
