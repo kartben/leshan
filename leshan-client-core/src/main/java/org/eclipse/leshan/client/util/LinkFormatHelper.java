@@ -52,7 +52,13 @@ public final class LinkFormatHelper {
         linkObjects.add(new LinkObject(rootURL, attributes));
 
         // sort resources
-        for (LwM2mObjectEnabler objectEnabler : objectEnablers) {
+        List<LwM2mObjectEnabler> objEnablerList = new ArrayList<LwM2mObjectEnabler>(objectEnablers);
+        Collections.sort(objEnablerList, new Comparator<LwM2mObjectEnabler>() {
+            public int compare(LwM2mObjectEnabler o1, LwM2mObjectEnabler o2) {
+                return o1.getId() - o2.getId();
+            }
+        });
+        for (LwM2mObjectEnabler objectEnabler : objEnablerList) {
             List<Integer> availableInstance = objectEnabler.getAvailableInstanceIds();
             if (availableInstance.isEmpty()) {
                 String objectInstanceUrl = getPath("/", root, Integer.toString(objectEnabler.getId()));
