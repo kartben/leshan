@@ -130,8 +130,13 @@ public class BootstrapResource extends CoapResource {
                     @Override
                     public void onResponse(Response response) {
                         LOG.debug("Bootstrap delete {} return code {}", endpoint, response.getCode());
-                        List<Integer> toSend = new ArrayList<>(cfg.security.keySet());
-                        sendBootstrap(e, endpoint, exchange.getSourceAddress(), exchange.getSourcePort(), cfg, toSend);
+                        if (response.getCode() == ResponseCode.DELETED) {
+                            List<Integer> toSend = new ArrayList<>(cfg.security.keySet());
+                            sendBootstrap(e, endpoint, exchange.getSourceAddress(), exchange.getSourcePort(), cfg,
+                                    toSend);
+                        } else {
+                            LOG.debug("Bootstrap delete / {} failed", endpoint);
+                        }
                     }
 
                     @Override
